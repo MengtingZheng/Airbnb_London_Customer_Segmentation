@@ -1,0 +1,222 @@
+---
+title: "Analyse data - shared room, inner London"
+---
+
+# import packages & function
+
+```{r}
+library(dplyr)
+library(quanteda)
+library(topicmodels)
+get_dfm <- readRDS("function_get_dfm.rds")
+```
+
+# import data
+
+```{r}
+shared_inner_df <- readRDS("full_shared_inner.rds")
+```
+
+# get dfm
+
+```{r}
+shared_inner_dfm_trimmed <- get_dfm(shared_inner_df)
+```
+
+# fit model (k = 30)
+
+```{r}
+shared_inner_lda_30 <- LDA(shared_inner_dfm_trimmed, 
+                           k = 30, 
+                           method = "Gibbs", 
+                           control = list(seed = 5, verbose = 25, burnin = 100, iter = 500))
+```
+
+# save & import model
+
+```{r}
+# saveRDS(shared_inner_lda_30, "shared_inner_lda_30.rds")
+
+shared_inner_lda_30 <- readRDS("shared_inner_lda_30.rds")
+```
+
+# descriptive keywords for each topic
+
+```{r}
+shared_inner_parameters <- as.data.frame(get_terms(shared_inner_lda_30, 20), stringsAsFactors = FALSE)
+```
+
+get segment:
+* price value (topic 14, 21, 26)
+* location - practical demand (topic 1, 2, 6, 18)
+* home benefits (topic 4, 8, 9, 11, 16, 25, 27)
+* enjoyment (topic 5, 10, 17, 19, 20, 22, 29)
+* social interaction (topic 30)
+* novelty (topic 28)
+
+redundant topics: 3, 7, 12, 13, 15, 23, 24
+
+# topic for each review
+
+```{r}
+shared_inner_topic <- get_topics(shared_inner_lda_30, 1)
+shared_inner_topic <- data.frame(review_id = as.integer(names(shared_inner_topic)), topic = shared_inner_topic, stringsAsFactors = FALSE)
+rownames(shared_inner_topic) <- seq(1, nrow(shared_inner_topic), by = 1)
+```
+
+# sample review for each segment
+
+```{r}
+shared_inner_df[shared_inner_df$id == sample(shared_inner_topic$review_id[shared_inner_topic$topic == 30], 1), 5]
+```
+
+# relative segment size/importance
+
+```{r}
+shared_inner_topic_distribution <- as.data.frame(shared_inner_lda_30@gamma, stringsAsFactors = FALSE)
+colnames(shared_inner_topic_distribution) <- colnames(shared_inner_parameters)
+shared_inner_topic_distribution <- data.frame(shared_inner_topic_distribution, 
+                                              price_value = rowSums(shared_inner_topic_distribution[ , c(14, 21, 26)]), 
+                                              location_practical_demand = rowSums(shared_inner_topic_distribution[ , c(1, 2, 6, 18)]), 
+                                              home_benefit = rowSums(shared_inner_topic_distribution[ , c(4, 8, 9, 11, 16, 25, 27)]), 
+                                              enjoyment = rowSums(shared_inner_topic_distribution[ , c(5, 10, 17, 19, 20, 22, 29)]), 
+                                              review_id = shared_inner_topic$review_id, 
+                                              stringsAsFactors = FALSE)
+
+# price value
+sum(shared_inner_topic$topic %in% c(14, 21, 26))
+mean(shared_inner_topic_distribution$price_value)
+# location - practical demand
+sum(shared_inner_topic$topic %in% c(1, 2, 6, 18))
+mean(shared_inner_topic_distribution$location_practical_demand)
+# home benefits
+sum(shared_inner_topic$topic %in% c(4, 8, 9, 11, 16, 25, 27))
+mean(shared_inner_topic_distribution$home_benefit)
+# enjoyment
+sum(shared_inner_topic$topic %in% c(5, 10, 17, 19, 20, 22, 29))
+mean(shared_inner_topic_distribution$enjoyment)
+# social interaction
+sum(shared_inner_topic$topic == 30)
+mean(shared_inner_topic_distribution$Topic.30)
+# novelty
+sum(shared_inner_topic$topic == 28)
+mean(shared_inner_topic_distribution$Topic.28)
+```
+
+# change in segment size/importance over years
+
+```{r}
+shared_inner_topic_distribution <- left_join(shared_inner_topic_distribution, 
+                                             shared_inner_df[ , c(2, 3)], 
+                                             by = c("review_id" = "id"))
+shared_inner_topic_distribution$year <- as.integer(format(shared_inner_topic_distribution$date, "%Y"))
+shared_inner_topic_distribution$month <- as.integer(format(shared_inner_topic_distribution$date, "%m"))
+
+segment_size_by_year <- aggregate(shared_inner_topic_distribution[ , c(31, 32, 33, 34, 30, 28)], by = list(year = shared_inner_topic_distribution$year), FUN = mean)
+segment_size_by_month <- aggregate(shared_inner_topic_distribution[ , c(31, 32, 33, 34, 30, 28)], by = list(month = shared_inner_topic_distribution$month), FUN = mean)
+
+plot(segment_size_by_year$year, 
+     segment_size_by_year$price_value, 
+     type = "l", 
+     xlab = "Year", 
+     ylab = "Avg. prob. of reviews about segment",
+     main = "Change in segment size over years: price value")
+plot(segment_size_by_year$year, 
+     segment_size_by_year$location_practical_demand, 
+     type = "l", 
+     xlab = "Year", 
+     ylab = "Avg. prob. of reviews about segment",
+     main = "Change in segment size over years: location - practical demand")
+plot(segment_size_by_year$year, 
+     segment_size_by_year$home_benefit, 
+     type = "l", 
+     xlab = "Year", 
+     ylab = "Avg. prob. of reviews about segment",
+     main = "Change in segment size over years: home benefits")
+plot(segment_size_by_year$year, 
+     segment_size_by_year$enjoyment, 
+     type = "l", 
+     xlab = "Year", 
+     ylab = "Avg. prob. of reviews about segment",
+     main = "Change in segment size over years: enjoyment")
+plot(segment_size_by_year$year, 
+     segment_size_by_year$Topic.30, 
+     type = "l", 
+     xlab = "Year", 
+     ylab = "Avg. prob. of reviews about segment",
+     main = "Change in segment size over years: social interaction")
+plot(segment_size_by_year$year, 
+     segment_size_by_year$Topic.28, 
+     type = "l", 
+     xlab = "Year", 
+     ylab = "Avg. prob. of reviews about segment",
+     main = "Change in segment size over years: novelty")
+```
+
+# seasonal variation in segment size/importance
+
+```{r}
+plot(segment_size_by_month$month, 
+     segment_size_by_month$price_value, 
+     type = "l", 
+     xlab = "Month", 
+     ylab = "Avg. prob. of reviews about segment",
+     main = "Seasonal variation in segment size: price value")
+plot(segment_size_by_month$month, 
+     segment_size_by_month$location_practical_demand, 
+     type = "l", 
+     xlab = "Month", 
+     ylab = "Avg. prob. of reviews about segment",
+     main = "Seasonal variation in segment size: location - practical demand")
+plot(segment_size_by_month$month, 
+     segment_size_by_month$home_benefit, 
+     type = "l", 
+     xlab = "Month", 
+     ylab = "Avg. prob. of reviews about segment",
+     main = "Seasonal variation in segment size: home benefits")
+plot(segment_size_by_month$month, 
+     segment_size_by_month$enjoyment, 
+     type = "l", 
+     xlab = "Month", 
+     ylab = "Avg. prob. of reviews about segment",
+     main = "Seasonal variation in segment size: enjoyment")
+plot(segment_size_by_month$month, 
+     segment_size_by_month$Topic.30, 
+     type = "l", 
+     xlab = "Month", 
+     ylab = "Avg. prob. of reviews about segment",
+     main = "Seasonal variation in segment size: social interaction")
+plot(segment_size_by_month$month, 
+     segment_size_by_month$Topic.28, 
+     type = "l", 
+     xlab = "Month", 
+     ylab = "Avg. prob. of reviews about segment",
+     main = "Seasonal variation in segment size: novelty")
+```
+
+# validation of additional segments
+
+```{r}
+# create dictionary
+
+dict <- dictionary(list(location_experiential = c("authentic.*", "local.*", "residen.*", "communit.*", "culture.*", "town", "real", "cottage", "village"), 
+                        sustainability = c("environment.*", "philosoph.*", "material", "materials", "develop.*", "support.*", "economy", "sustainab.*", "resource.*")))
+
+# find freqneucy
+
+shared_inner_dfm_validate <- dfm_lookup(shared_inner_dfm_trimmed, 
+                                        dictionary = dict, 
+                                        valuetype = "regex", 
+                                        case_insensitive = TRUE, 
+                                        exclusive = FALSE, 
+                                        capkeys = TRUE)
+
+# convert to proportion percentage within review
+
+shared_inner_dfm_validate <- dfm_weight(shared_inner_dfm_validate, 
+                                        scheme = "prop")
+shared_inner_dfm_validate <- shared_inner_dfm_validate[, c("LOCATION_EXPERIENTIAL", "SUSTAINABILITY")]
+
+# get average proportion percentage over all reviews for each potential segment
+colMeans(shared_inner_dfm_validate)
+```

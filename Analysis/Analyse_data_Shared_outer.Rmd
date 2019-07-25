@@ -1,0 +1,254 @@
+---
+title: "Analyse data - shared room, outer London"
+---
+
+# import packages & function
+
+```{r}
+library(dplyr)
+library(quanteda)
+library(topicmodels)
+get_dfm <- readRDS("function_get_dfm.rds")
+```
+
+# import data
+
+```{r}
+shared_outer_df <- readRDS("full_shared_outer.rds")
+```
+
+# get dfm
+
+```{r}
+shared_outer_dfm_trimmed <- get_dfm(shared_outer_df)
+```
+
+# fit model (k = 30)
+
+```{r}
+shared_outer_lda_30 <- LDA(shared_outer_dfm_trimmed, 
+                           k = 30, 
+                           method = "Gibbs", 
+                           control = list(seed = 6, verbose = 25, burnin = 100, iter = 500))
+```
+
+# save & import model
+
+```{r}
+# saveRDS(shared_outer_lda_30, "shared_outer_lda_30.rds")
+
+shared_outer_lda_30 <- readRDS("shared_outer_lda_30.rds")
+```
+
+# descriptive keywords for each topic
+
+```{r}
+shared_outer_parameters <- as.data.frame(get_terms(shared_outer_lda_30, 20), stringsAsFactors = FALSE)
+```
+
+get segments:
+* price value (topic 3, 20, 26, 27)
+* location - practical demand (topic 15, 25, 30)
+* home benefits (topic 8, 16, 22)
+* enjoyment (topic 4, 7, 9, 12, 14, 17, 19, 23, 24, 29)
+* social interaction (topic 6)
+* novelty (topic 5)
+
+* home benefits & enjoyment overlap (topic 13)
+* location - practical demand & experiential demand overlap (topic 10)
+
+redundant topics: 1, 2, 11, 18, 21, 28
+
+# topic for each review
+
+```{r}
+shared_outer_topic <- get_topics(shared_outer_lda_30, 1)
+shared_outer_topic <- data.frame(review_id = as.integer(names(shared_outer_topic)), topic = shared_outer_topic, stringsAsFactors = FALSE)
+rownames(shared_outer_topic) <- seq(1, nrow(shared_outer_topic), by = 1)
+```
+
+# sample review for each segment
+
+```{r}
+shared_outer_df[shared_outer_df$id == sample(shared_outer_topic$review_id[shared_outer_topic$topic == 29], 1), 5]
+```
+
+# relative segment size/importance
+
+```{r}
+shared_outer_topic_distribution <- as.data.frame(shared_outer_lda_30@gamma, stringsAsFactors = FALSE)
+colnames(shared_outer_topic_distribution) <- colnames(shared_outer_parameters)
+shared_outer_topic_distribution <- data.frame(shared_outer_topic_distribution, 
+                                              price_value = rowSums(shared_outer_topic_distribution[ , c(3, 20, 26, 27)]), 
+                                              location_practical_demand = rowSums(shared_outer_topic_distribution[ , c(15, 25, 30)]), 
+                                              home_benefit = rowSums(shared_outer_topic_distribution[ , c(8, 16, 22)]), 
+                                              enjoyment = rowSums(shared_outer_topic_distribution[ , c(4, 7, 9, 12, 14, 17, 19, 23, 24, 29)]), 
+                                              review_id = shared_outer_topic$review_id, 
+                                              stringsAsFactors = FALSE)
+
+# price value
+sum(shared_outer_topic$topic %in% c(3, 20, 26, 27))
+mean(shared_outer_topic_distribution$price_value)
+# location - practical demand
+sum(shared_outer_topic$topic %in% c(15, 25, 30))
+mean(shared_outer_topic_distribution$location_practical_demand)
+# home benefits
+sum(shared_outer_topic$topic %in% c(8, 16, 22))
+mean(shared_outer_topic_distribution$home_benefit)
+# enjoyment
+sum(shared_outer_topic$topic %in% c(4, 7, 9, 12, 14, 17, 19, 23, 24, 29))
+mean(shared_outer_topic_distribution$enjoyment)
+# social interaction
+sum(shared_outer_topic$topic == 6)
+mean(shared_outer_topic_distribution$Topic.6)
+# novelty
+sum(shared_outer_topic$topic == 5)
+mean(shared_outer_topic_distribution$Topic.5)
+# home benefits & enjoyment overlap
+sum(shared_outer_topic$topic == 13)
+mean(shared_outer_topic_distribution$Topic.13)
+# location - practical demand & experiential demand overlap
+sum(shared_outer_topic$topic == 10)
+mean(shared_outer_topic_distribution$Topic.10)
+```
+
+# change in segment size/importance over years
+
+```{r}
+shared_outer_topic_distribution <- left_join(shared_outer_topic_distribution, 
+                                             shared_outer_df[ , c(2, 3)], 
+                                             by = c("review_id" = "id"))
+shared_outer_topic_distribution$year <- as.integer(format(shared_outer_topic_distribution$date, "%Y"))
+shared_outer_topic_distribution$month <- as.integer(format(shared_outer_topic_distribution$date, "%m"))
+
+segment_size_by_year <- aggregate(shared_outer_topic_distribution[ , c(31, 32, 33, 34, 6, 5, 13, 10)], by = list(year = shared_outer_topic_distribution$year), FUN = mean)
+segment_size_by_month <- aggregate(shared_outer_topic_distribution[ , c(31, 32, 33, 34, 6, 5, 13, 10)], by = list(month = shared_outer_topic_distribution$month), FUN = mean)
+
+plot(segment_size_by_year$year, 
+     segment_size_by_year$price_value, 
+     type = "l", 
+     xlab = "Year", 
+     ylab = "Avg. prob. of reviews about segment",
+     main = "Change in segment size over years: price value")
+plot(segment_size_by_year$year, 
+     segment_size_by_year$location_practical_demand, 
+     type = "l", 
+     xlab = "Year", 
+     ylab = "Avg. prob. of reviews about segment",
+     main = "Change in segment size over years: location - practical demand")
+plot(segment_size_by_year$year, 
+     segment_size_by_year$home_benefit, 
+     type = "l", 
+     xlab = "Year", 
+     ylab = "Avg. prob. of reviews about segment",
+     main = "Change in segment size over years: home benefits")
+plot(segment_size_by_year$year, 
+     segment_size_by_year$enjoyment, 
+     type = "l", 
+     xlab = "Year", 
+     ylab = "Avg. prob. of reviews about segment",
+     main = "Change in segment size over years: enjoyment")
+plot(segment_size_by_year$year, 
+     segment_size_by_year$Topic.6, 
+     type = "l", 
+     xlab = "Year", 
+     ylab = "Avg. prob. of reviews about segment",
+     main = "Change in segment size over years: social interaction")
+plot(segment_size_by_year$year, 
+     segment_size_by_year$Topic.5, 
+     type = "l", 
+     xlab = "Year", 
+     ylab = "Avg. prob. of reviews about segment",
+     main = "Change in segment size over years: novelty")
+plot(segment_size_by_year$year, 
+     segment_size_by_year$Topic.13, 
+     type = "l", 
+     xlab = "Year", 
+     ylab = "Avg. prob. of reviews about segment",
+     main = "Change in segment size over years: home benefits & enjoyment")
+plot(segment_size_by_year$year, 
+     segment_size_by_year$Topic.10, 
+     type = "l", 
+     xlab = "Year", 
+     ylab = "Avg. prob. of reviews about segment",
+     main = "Change in segment size over years: location - practical & experiential demand")
+```
+
+# seasonal variation in segment size/importance
+
+```{r}
+plot(segment_size_by_month$month, 
+     segment_size_by_month$price_value, 
+     type = "l", 
+     xlab = "Month", 
+     ylab = "Avg. prob. of reviews about segment",
+     main = "Seasonal variation in segment size: price value")
+plot(segment_size_by_month$month, 
+     segment_size_by_month$location_practical_demand, 
+     type = "l", 
+     xlab = "Month", 
+     ylab = "Avg. prob. of reviews about segment",
+     main = "Seasonal variation in segment size: location - practical demand")
+plot(segment_size_by_month$month, 
+     segment_size_by_month$home_benefit, 
+     type = "l", 
+     xlab = "Month", 
+     ylab = "Avg. prob. of reviews about segment",
+     main = "Seasonal variation in segment size: home benefits")
+plot(segment_size_by_month$month, 
+     segment_size_by_month$enjoyment, 
+     type = "l", 
+     xlab = "Month", 
+     ylab = "Avg. prob. of reviews about segment",
+     main = "Seasonal variation in segment size: enjoyment")
+plot(segment_size_by_month$month, 
+     segment_size_by_month$Topic.6, 
+     type = "l", 
+     xlab = "Month", 
+     ylab = "Avg. prob. of reviews about segment",
+     main = "Seasonal variation in segment size: social interaction")
+plot(segment_size_by_month$month, 
+     segment_size_by_month$Topic.5, 
+     type = "l", 
+     xlab = "Month", 
+     ylab = "Avg. prob. of reviews about segment",
+     main = "Seasonal variation in segment size: novelty")
+plot(segment_size_by_month$month, 
+     segment_size_by_month$Topic.13, 
+     type = "l", 
+     xlab = "Month", 
+     ylab = "Avg. prob. of reviews about segment",
+     main = "Seasonal variation in segment size: home benefits & enjoyment")
+plot(segment_size_by_month$month, 
+     segment_size_by_month$Topic.10, 
+     type = "l", 
+     xlab = "Month", 
+     ylab = "Avg. prob. of reviews about segment",
+     main = "Seasonal variation in segment size: location - practical & experiential demand")
+```
+
+# validation of additional segments
+
+```{r}
+# create dictionary
+
+dict <- dictionary(list(sustainability = c("environment.*", "philosoph.*", "material", "materials", "develop.*", "support.*", "economy", "sustainab.*", "resource.*")))
+
+# find freqneucy
+
+shared_outer_dfm_validate <- dfm_lookup(shared_outer_dfm_trimmed, 
+                                        dictionary = dict, 
+                                        valuetype = "regex", 
+                                        case_insensitive = TRUE, 
+                                        exclusive = FALSE, 
+                                        capkeys = TRUE)
+
+# convert to proportion percentage within review
+
+shared_outer_dfm_validate <- dfm_weight(shared_outer_dfm_validate, 
+                                        scheme = "prop")
+shared_outer_dfm_validate <- shared_outer_dfm_validate[, "SUSTAINABILITY"]
+
+# get average proportion percentage over all reviews for each potential segment
+colMeans(shared_outer_dfm_validate)
+```

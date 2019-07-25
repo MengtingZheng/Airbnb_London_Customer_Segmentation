@@ -1,0 +1,42 @@
+---
+title: "Analyse data - function"
+---
+
+# create function to get dfm
+
+```{r}
+get_dfm <- function (review_df) {
+  
+  # create corpus
+  review_corpus <- corpus(review_df$comments, docnames = review_df$id)
+  
+  # create dfm
+  review_dfm <- dfm(review_corpus, 
+                    what = "word",
+                    tolower = TRUE, 
+                    stem = FALSE, 
+                    remove = stopwords("english"), 
+                    remove_numbers = TRUE, 
+                    remove_punct = TRUE, 
+                    remove_symbols = TRUE, 
+                    remove_separators = TRUE, 
+                    remove_twitter = TRUE, 
+                    remove_hyphens = FALSE, 
+                    remove_url = TRUE, 
+                    verbose = TRUE)
+  
+  # trim dfm - remove unimportant features / word types that exist in only 1 review
+  review_dfm_trimmed <- dfm_trim(review_dfm, 
+                                 min_docfreq = 2, 
+                                 docfreq_type = "count", 
+                                 verbose = TRUE)
+  
+  # remove reviews that originally only contain unimportant information - rows of 0 in trimmed dfm
+  review_dfm_trimmed <- review_dfm_trimmed[rowSums(review_dfm_trimmed) != 0, ]
+  
+  return (review_dfm_trimmed)
+  
+}
+
+saveRDS(get_dfm, "function_get_dfm.rds")
+```

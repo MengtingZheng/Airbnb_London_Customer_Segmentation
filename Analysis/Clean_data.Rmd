@@ -1,0 +1,215 @@
+---
+title: "Clean data"
+---
+
+# import packages
+
+```{r}
+library(stringi)
+library(dplyr)
+```
+
+# clean review data
+
+```{r}
+# create function for cleaning a review dataset
+
+clean_review_dataset <- function (review_dataset) {
+  
+  # remove reviewer names
+  review_dataset <- review_dataset[ , -5]
+  # remove non-English reviews & NAs
+  review_dataset <- review_dataset[which(stri_enc_isascii(review_dataset$comments)), ]
+  # reset index
+  rownames(review_dataset) <- seq(1, nrow(review_dataset), by = 1)
+  
+  return (review_dataset)
+}
+
+# import the latest dataset
+
+reviews_full <- read.csv("reviews_190505.csv", 
+                         header = TRUE, 
+                         stringsAsFactors = FALSE, 
+                         colClasses = c("integer", "integer", "Date", "integer", "character", "character"))
+
+# clean the latest dataset
+
+reviews_full <- clean_review_dataset(reviews_full)
+
+# expand the latest dataset with listings terminated earlier (listings in previous datasets but not in the latest dataset)
+
+old_version_names <- c("reviews_190409.csv", "reviews_190307.csv", "reviews_190205.csv", "reviews_190113.csv", "reviews_181207.csv", "reviews_181104.csv", "reviews_181006.csv", 
+                       "reviews_180910.csv", "reviews_180808.csv", "reviews_180707.csv", "reviews_180511.csv", "reviews_180408.csv", "reviews_170304.csv", "reviews_161003.csv", 
+                       "reviews_160602.csv", "reviews_160202.csv", "reviews_150902.csv", "reviews_150406.csv")
+
+for (old_version in old_version_names) {
+  # import historical dataset
+  previous_reviews <- read.csv(old_version, 
+                               header = TRUE, 
+                               stringsAsFactors = FALSE, 
+                               colClasses = c("integer", "integer", "Date", "integer", "character", "character"))
+  # clean dataset
+  previous_reviews <- clean_review_dataset(previous_reviews)
+  # anti join
+  reviews_full <- rbind(reviews_full, 
+                        anti_join(x = previous_reviews, y = reviews_full, by = "listing_id"), 
+                        stringsAsFactors = FALSE)
+}
+
+# sort rows by listing_id
+
+reviews_full <- reviews_full[order(reviews_full$listing_id), ]
+
+# reset index
+
+rownames(reviews_full) <- seq(1, nrow(reviews_full), by = 1)
+
+# save object
+
+# saveRDS(reviews_full, file = "reviews_full.rds")
+```
+
+# clean listing data
+
+```{r}
+# import the latest dataset
+
+listings_full <- read.csv("listings_190505.csv", 
+                          header = TRUE, 
+                          stringsAsFactors = FALSE)
+
+# remove redundant features
+
+listings_full <- listings_full[ , c("id", "neighbourhood", "room_type")]
+
+# expand the latest dataset with listings terminated earlier (listings in previous datasets but not in the latest dataset)
+
+old_version_names <- c("listings_190409.csv", "listings_190307.csv", "listings_190205.csv", "listings_190113.csv", "listings_181207.csv", "listings_181104.csv", "listings_181006.csv", 
+                       "listings_180910.csv", "listings_180808.csv", "listings_180707.csv", "listings_180511.csv", "listings_180408.csv", "listings_170304.csv", "listings_161003.csv", 
+                       "listings_160602.csv", "listings_160202.csv", "listings_150902.csv", "listings_150406.csv")
+
+for (old_version in old_version_names) {
+  # import historical dataset
+  previous_listings <- read.csv(old_version, 
+                               header = TRUE, 
+                               stringsAsFactors = FALSE)
+  # remove redundant features
+  previous_listings <- previous_listings[ , c("id", "neighbourhood", "room_type")]
+  # anti join
+  listings_full <- rbind(listings_full, 
+                         anti_join(x = previous_listings, y = listings_full, by = "id"), 
+                         stringsAsFactors = FALSE)
+}
+
+# sort rows by id
+
+listings_full <- listings_full[order(listings_full$id), ]
+
+# reset index
+
+rownames(listings_full) <- seq(1, nrow(listings_full), by = 1)
+
+# save object
+
+# saveRDS(listings_full, file = "listings_full.rds")
+```
+
+# aggregate data
+
+```{r}
+# combine 2 datasets
+
+full <- left_join(x = reviews_full, 
+                  y = listings_full, 
+                  by = c("listing_id" = "id"))
+
+# reset index
+
+rownames(full) <- seq(1, nrow(full), by = 1)
+
+# remove one of two repetitive reviews, detected by repetitive review id
+# the corresponding two listings have different ids but are actually the same
+# but may not be able to completely remove either one of the two listings, because both may have unique reviews that do not attach to one another.
+
+full_review_id <- full$id
+full_review_id <- sort(full_review_id)
+
+i <- 1
+repetitive_review_id <- c()
+while (i <= 1819177) {
+  if (full_review_id[i] == full_review_id[i+1]) {
+    repetitive_review_id <- append(repetitive_review_id, full_review_id[i])
+  }
+  i <- i + 1
+}
+
+repetitive_data <- full[full$id %in% repetitive_review_id, ]
+repetitive_data <- repetitive_data[order(repetitive_data$id), ]
+
+index_for_redundant_data <- as.numeric(rownames(repetitive_data)[seq(1, 1157, by = 2)])
+
+full <- full[-index_for_redundant_data, ]
+
+# reset index
+
+rownames(full) <- seq(1, nrow(full), by = 1)
+
+# save object
+
+# saveRDS(full, file = "full.rds")
+```
+
+# separate data based on room type and London region
+
+```{r}
+# by room type
+
+full_private <- full[full$room_type == "Private room", ]
+rownames(full_private) <- seq(1, nrow(full_private), by = 1)
+
+full_entire <- full[full$room_type == "Entire home/apt", ]
+rownames(full_entire) <- seq(1, nrow(full_entire), by = 1)
+
+full_shared <- full[full$room_type == "Shared room", ]
+rownames(full_shared) <- seq(1, nrow(full_shared), by = 1)
+
+# further by London region
+
+full_private_inner <- full_private[full_private$neighbourhood %in% c("Camden", "Greenwich", "Hackney", "Hammersmith and Fulham", "Islington", "Kensington and Chelsea", "Lambeth", 
+                                                                     "Lewisham", "Southwark", "Tower Hamlets", "Wandsworth", "Westminster", "City of London"), ]
+rownames(full_private_inner) <- seq(1, nrow(full_private_inner), by = 1)
+
+full_private_outer <- full_private[! full_private$neighbourhood %in% c("Camden", "Greenwich", "Hackney", "Hammersmith and Fulham", "Islington", "Kensington and Chelsea", "Lambeth", 
+                                                                       "Lewisham", "Southwark", "Tower Hamlets", "Wandsworth", "Westminster", "City of London"), ]
+rownames(full_private_outer) <- seq(1, nrow(full_private_outer), by = 1)
+
+full_entire_inner <- full_entire[full_entire$neighbourhood %in% c("Camden", "Greenwich", "Hackney", "Hammersmith and Fulham", "Islington", "Kensington and Chelsea", "Lambeth", 
+                                                                  "Lewisham", "Southwark", "Tower Hamlets", "Wandsworth", "Westminster", "City of London"), ]
+rownames(full_entire_inner) <- seq(1, nrow(full_entire_inner), by = 1)
+
+full_entire_outer <- full_entire[! full_entire$neighbourhood %in% c("Camden", "Greenwich", "Hackney", "Hammersmith and Fulham", "Islington", "Kensington and Chelsea", "Lambeth", 
+                                                                    "Lewisham", "Southwark", "Tower Hamlets", "Wandsworth", "Westminster", "City of London"), ]
+rownames(full_entire_outer) <- seq(1, nrow(full_entire_outer), by = 1)
+
+full_shared_inner <- full_shared[full_shared$neighbourhood %in% c("Camden", "Greenwich", "Hackney", "Hammersmith and Fulham", "Islington", "Kensington and Chelsea", "Lambeth", 
+                                                                  "Lewisham", "Southwark", "Tower Hamlets", "Wandsworth", "Westminster", "City of London"), ]
+rownames(full_shared_inner) <- seq(1, nrow(full_shared_inner), by = 1)
+
+full_shared_outer <- full_shared[! full_shared$neighbourhood %in% c("Camden", "Greenwich", "Hackney", "Hammersmith and Fulham", "Islington", "Kensington and Chelsea", "Lambeth", 
+                                                                    "Lewisham", "Southwark", "Tower Hamlets", "Wandsworth", "Westminster", "City of London"), ]
+rownames(full_shared_outer) <- seq(1, nrow(full_shared_outer), by = 1)
+
+# save object
+
+# saveRDS(full_private, file = "full_private.rds")
+# saveRDS(full_entire, file = "full_entire.rds")
+# saveRDS(full_shared, file = "full_shared.rds")
+
+saveRDS(full_private_inner, file = "full_private_inner.rds")
+saveRDS(full_private_outer, file = "full_private_outer.rds")
+saveRDS(full_entire_inner, file = "full_entire_inner.rds")
+saveRDS(full_entire_outer, file = "full_entire_outer.rds")
+saveRDS(full_shared_inner, file = "full_shared_inner.rds")
+saveRDS(full_shared_outer, file = "full_shared_outer.rds")
+```
