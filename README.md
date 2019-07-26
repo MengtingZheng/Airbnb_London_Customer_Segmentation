@@ -9,5 +9,5 @@ This README file provides an overview of the replication materials for the proje
 # Analysis
 * `Clean_data.Rmd` replicates the process of cleaning the raw data to get the datasets in the Data folder.
 * `Analyse_data_Function.Rmd` decontructs the steps within the self-written function `function_get_dfm.rds` that is called at the beginning of analysis to generate the document-feature matrix from a dataset.
-* The remaining six files ending with `.Rmd` replicate the full analyses for the six datasets, and they have identical steps, including generating document-feature matrix, topic modelling, analysing the topic model and validating potential topics in the corpus with dictionary-based scaling.
+* The remaining six files ending with `.Rmd` replicate the full analyses of the six datasets. They involve identical steps, including generating document-feature matrix, topic modelling, analysing the topic model and validating potential topics in the corpus with dictionary-based scaling.
 * The remaining six files ending with `.rds` are the LDA models generated from the step of topic modelling for the six datasets. Since the LDA topic modelling algorithm takes a long time to run, the resulted models are saved as objects that can be quickly imported into the `.Rmd` files to perform further analysis.
